@@ -3,12 +3,38 @@
 // Monitors open trades for take-profit, stop-loss, trailing
 // ═══════════════════════════════════════════════════════════
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { CONFIG } from '../config.js';
 import { fetchMidpoint } from '../data/polymarket.js';
 
-// ─── In-memory open positions ───
-const openPositions = [];
-const closedPositions = [];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DATA_DIR = join(__dirname, '..', 'data');
+const STATE_FILE = join(DATA_DIR, 'exit-monitor.json');
+
+// ─── Persistence ───
+function ensureDir() {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function loadState() {
+  ensureDir();
+  try {
+    if (existsSync(STATE_FILE)) {
+      return JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
+    }
+  } catch { /* ignore */ }
+  return { openPositions: [], closedPositions: [] };
+}
+
+function saveState(state) {
+  ensureDir();
+  writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+let { openPositions, closedPositions } = loadState();
 
 // ─── Add a new position to monitor ───
 export function addPosition(trade) {
@@ -41,6 +67,8 @@ export function addPosition(trade) {
     entryTime: Date.now(),
     lastChecked: Date.now()
   });
+
+  saveState({ openPositions, closedPositions });
 }
 
 // ─── Check all open positions for exit signals ───
@@ -136,6 +164,10 @@ export async function checkExits() {
 
     pos.lastChecked = Date.now();
     await new Promise(r => setTimeout(r, 300));
+  }
+
+  if (toClose.length > 0) {
+    saveState({ openPositions, closedPositions });
   }
 
   return toClose;
