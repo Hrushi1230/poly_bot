@@ -39,7 +39,7 @@ async function scanMarkets() {
   const balance = document.getElementById('balanceSelect').value;
 
   try {
-    const res = await fetch(`/api/scan?mode=${currentMode}&top=12&balance=${balance}`);
+    const res = await fetch(`/api/scan?mode=${currentMode}&top=50&balance=${balance}`);
     const data = await res.json();
 
     if (data.error) throw new Error(data.error);
