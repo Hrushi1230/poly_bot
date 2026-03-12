@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import express from 'express';
+import cron from 'node-cron';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { getTopMarkets, testConnection as testPoly } from '../data/polymarket.js';
@@ -19,7 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const risk = new RiskManager(1000);
 
 app.use(express.static(join(__dirname, 'public')));
@@ -117,6 +118,39 @@ app.get('/api/config', (req, res) => {
     shared: CONFIG.SHARED,
     confidence_tiers: CONFIG.CONFIDENCE_TIERS
   });
+});
+
+// ─── Background Worker (Cron) ───
+// Runs every hour on the hour (0 * * * *)
+cron.schedule('0 * * * *', async () => {
+  console.log('\n[CRON] ⏰ Running hourly background market scan...');
+  try {
+    const allMarkets = await getTopMarkets(40); // Need enough pool to get 10 of each
+    
+    // Sprint (< 24h)
+    const sprintMarkets = allMarkets.filter(m => m.mode === 'SPRINT').slice(0, 10);
+    for (const market of sprintMarkets) {
+      const analysis = await analyzeMarket(market, allMarkets, 1000);
+      const execution = runKillChain(analysis, 1000, risk.getRiskState());
+      logPrediction(analysis, execution);
+      if (execution.execute) recordPaperTrade(analysis, execution);
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Marathon (> 24h)
+    const marathonMarkets = allMarkets.filter(m => m.mode === 'MARATHON').slice(0, 10);
+    for (const market of marathonMarkets) {
+      const analysis = await analyzeMarket(market, allMarkets, 1000);
+      const execution = runKillChain(analysis, 1000, risk.getRiskState());
+      logPrediction(analysis, execution);
+      if (execution.execute) recordPaperTrade(analysis, execution);
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    console.log('[CRON] ✅ Hourly scan complete. Predictions and paper trades saved.');
+  } catch (err) {
+    console.error('[CRON] ❌ Hourly scan failed:', err.message);
+  }
 });
 
 // ─── Start Server ───
