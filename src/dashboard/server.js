@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
-// PolyAlpha v5 — Dashboard Server
-// Express + SSE real-time updates
+// PolyAlpha v5.1 — Dashboard Server
+// Express + Cron + Triple Mode + Exit Monitor
 // ═══════════════════════════════════════════════════════════
 
 import express from 'express';
@@ -11,6 +11,7 @@ import { getTopMarkets, testConnection as testPoly } from '../data/polymarket.js
 import { testConnection as testGdelt } from '../data/news.js';
 import { analyzeMarket } from '../engine/analyzer.js';
 import { runKillChain } from '../engine/execution.js';
+import { addPosition, checkExits, getOpenPositions, getClosedPositions, getExitStats } from '../engine/exit-manager.js';
 import { RiskManager } from '../risk/manager.js';
 import { logPrediction, compareExpectedVsActual, suggestWeightAdjustments } from '../learning/logger.js';
 import { getPaperReport, recordPaperTrade } from '../paper-trader.js';
@@ -43,6 +44,7 @@ app.get('/api/scan', async (req, res) => {
     let markets = allMarkets;
 
     if (mode === 'sprint') markets = allMarkets.filter(m => m.mode === 'SPRINT');
+    if (mode === 'swing') markets = allMarkets.filter(m => m.mode === 'SWING');
     if (mode === 'marathon') markets = allMarkets.filter(m => m.mode === 'MARATHON');
     markets = markets.slice(0, top);
 
@@ -54,7 +56,22 @@ app.get('/api/scan', async (req, res) => {
         const execution = runKillChain(analysis, balance, riskState);
 
         logPrediction(analysis, execution);
-        if (execution.execute) recordPaperTrade(analysis, execution);
+
+        if (execution.execute) {
+          recordPaperTrade(analysis, execution);
+          // Add to exit monitor
+          addPosition({
+            id: analysis.market_id || market.id,
+            market_name: analysis.market_name || market.question,
+            tokenId: market.clobTokenIds?.[0] || null,
+            mode: analysis.mode || market.mode,
+            side: execution.action === 'BUY_YES' ? 'YES' : 'NO',
+            entryPrice: analysis.current_price || 0.5,
+            shares: execution.betSize ? Math.floor(execution.betSize / (analysis.current_price || 0.5)) : 0,
+            betSize: execution.betSize || 0,
+            spread: analysis.market_health?.spread || 0.02
+          });
+        }
 
         results.push({
           ...analysis,
@@ -110,56 +127,92 @@ app.get('/api/paper', (req, res) => {
   res.json(getPaperReport());
 });
 
+// ─── API: Exit Manager ───
+app.get('/api/exits', (req, res) => {
+  res.json({
+    open: getOpenPositions(),
+    closed: getClosedPositions(50),
+    stats: getExitStats()
+  });
+});
+
 // ─── API: Config ───
 app.get('/api/config', (req, res) => {
   res.json({
     sprint: CONFIG.SPRINT,
+    swing: CONFIG.SWING,
     marathon: CONFIG.MARATHON,
     shared: CONFIG.SHARED,
     confidence_tiers: CONFIG.CONFIDENCE_TIERS
   });
 });
 
-// ─── Background Worker (Cron) ───
-// Runs every hour on the hour (0 * * * *)
+// ─── Background Worker: Hourly Market Scan ───
 cron.schedule('0 * * * *', async () => {
-  console.log('\n[CRON] ⏰ Running hourly background market scan...');
+  console.log('\n[CRON] ⏰ Running hourly market scan (all 3 modes)...');
   try {
-    const allMarkets = await getTopMarkets(40); // Need enough pool to get 10 of each
-    
-    // Sprint (< 24h)
-    const sprintMarkets = allMarkets.filter(m => m.mode === 'SPRINT').slice(0, 10);
-    for (const market of sprintMarkets) {
-      const analysis = await analyzeMarket(market, allMarkets, 1000);
-      const execution = runKillChain(analysis, 1000, risk.getRiskState());
-      logPrediction(analysis, execution);
-      if (execution.execute) recordPaperTrade(analysis, execution);
-      await new Promise(r => setTimeout(r, 500));
+    const allMarkets = await getTopMarkets(60);
+
+    for (const modeName of ['SPRINT', 'SWING', 'MARATHON']) {
+      const modeMarkets = allMarkets.filter(m => m.mode === modeName).slice(0, 10);
+      for (const market of modeMarkets) {
+        try {
+          const analysis = await analyzeMarket(market, allMarkets, 1000);
+          const execution = runKillChain(analysis, 1000, risk.getRiskState());
+          logPrediction(analysis, execution);
+
+          if (execution.execute) {
+            recordPaperTrade(analysis, execution);
+            addPosition({
+              id: analysis.market_id || market.id,
+              market_name: analysis.market_name || market.question,
+              tokenId: market.clobTokenIds?.[0] || null,
+              mode: modeName,
+              side: execution.action === 'BUY_YES' ? 'YES' : 'NO',
+              entryPrice: analysis.current_price || 0.5,
+              shares: execution.betSize ? Math.floor(execution.betSize / (analysis.current_price || 0.5)) : 0,
+              betSize: execution.betSize || 0,
+              spread: analysis.market_health?.spread || 0.02
+            });
+          }
+        } catch (err) {
+          // Skip failed markets silently
+        }
+        await new Promise(r => setTimeout(r, 500));
+      }
     }
 
-    // Marathon (> 24h)
-    const marathonMarkets = allMarkets.filter(m => m.mode === 'MARATHON').slice(0, 10);
-    for (const market of marathonMarkets) {
-      const analysis = await analyzeMarket(market, allMarkets, 1000);
-      const execution = runKillChain(analysis, 1000, risk.getRiskState());
-      logPrediction(analysis, execution);
-      if (execution.execute) recordPaperTrade(analysis, execution);
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    console.log('[CRON] ✅ Hourly scan complete. Predictions and paper trades saved.');
+    console.log('[CRON] ✅ Hourly scan complete (Sprint + Swing + Marathon).');
   } catch (err) {
     console.error('[CRON] ❌ Hourly scan failed:', err.message);
+  }
+});
+
+// ─── Background Worker: Exit Monitor (every 5 min) ───
+cron.schedule('*/5 * * * *', async () => {
+  const openCount = getOpenPositions().length;
+  if (openCount === 0) return; // Nothing to monitor
+
+  console.log(`[EXIT-MONITOR] 👁️ Checking ${openCount} open position(s)...`);
+  try {
+    const exits = await checkExits();
+    if (exits.length > 0) {
+      const stats = getExitStats();
+      console.log(`[EXIT-MONITOR] 📊 ${exits.length} position(s) closed | Total P&L: $${stats.totalPnL.toFixed(2)} | Win rate: ${stats.winRate}`);
+    }
+  } catch (err) {
+    console.error('[EXIT-MONITOR] ❌ Check failed:', err.message);
   }
 });
 
 // ─── Start Server ───
 app.listen(PORT, () => {
   console.log(`
-╔═══════════════════════════════════════════╗
-║   PolyAlpha v5 FORTRESS — Dashboard      ║
-║   http://localhost:${PORT}                  ║
-║   ⚡ Sprint  |  🏔️ Marathon               ║
-╚═══════════════════════════════════════════╝
+╔═══════════════════════════════════════════════════╗
+║   PolyAlpha v5.1 FORTRESS — Dashboard            ║
+║   http://localhost:${PORT}                           ║
+║   ⚡ Sprint  |  🔥 Swing  |  🏔️ Marathon          ║
+║   💰 Auto Exit: +10¢/+15¢/+20¢ | Stop: -7¢      ║
+╚═══════════════════════════════════════════════════╝
   `);
 });

@@ -1,36 +1,40 @@
 // ═══════════════════════════════════════════════════════════
-// PolyAlpha v5 — Dashboard Frontend Logic
+// PolyAlpha v5.1 — Dashboard Frontend
+// Triple Mode + Exit Monitor
 // ═══════════════════════════════════════════════════════════
 
 let currentMode = 'all';
 let scanResults = [];
-let isScanning = false;
+let scanning = false;
 
-// ─── Set Active Mode Tab ───
+// ─── Mode Tabs ───
 function setMode(mode) {
   currentMode = mode;
+
+  // Reset all tabs
   document.querySelectorAll('.tab').forEach(t => {
     t.className = 'tab';
   });
 
-  const tabId = mode === 'all' ? 'tabAll' : mode === 'sprint' ? 'tabSprint' : 'tabMarathon';
-  const activeClass = mode === 'marathon' ? 'active-marathon' : 'active-sprint';
-  document.getElementById(tabId).classList.add(activeClass);
+  // Set active tab
+  const tabMap = { all: 'tabAll', sprint: 'tabSprint', swing: 'tabSwing', marathon: 'tabMarathon' };
+  const activeClass = mode === 'sprint' ? 'active-sprint'
+    : mode === 'swing' ? 'active-swing'
+    : mode === 'marathon' ? 'active-marathon'
+    : 'active-sprint';
+  document.getElementById(tabMap[mode]).classList.add(activeClass);
 
-  renderMarkets();
+  renderResults();
 }
 
-// ─── Run Market Scan ───
-async function runScan() {
-  if (isScanning) return;
-  isScanning = true;
+// ─── Scan Markets ───
+async function scanMarkets() {
+  if (scanning) return;
+  scanning = true;
 
-  const btn = document.getElementById('scanBtn');
+  const btn = document.querySelector('.btn-scan');
+  btn.textContent = '⏳ Scanning...';
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px;margin:0"></span> Scanning...';
-
-  const grid = document.getElementById('marketGrid');
-  grid.innerHTML = '<div class="loading"><div class="spinner"></div><p>Analyzing markets through 6-layer engine...</p><p style="font-size:0.8rem;margin-top:8px;color:#555570">Running: Alpha → Bayesian → Edge → Kill Chain</p></div>';
 
   const balance = document.getElementById('balanceSelect').value;
 
@@ -38,147 +42,200 @@ async function runScan() {
     const res = await fetch(`/api/scan?mode=${currentMode}&top=12&balance=${balance}`);
     const data = await res.json();
 
+    if (data.error) throw new Error(data.error);
+
     scanResults = data.results || [];
-    updateStats(data);
-    renderMarkets();
-    updateRiskPanel();
+
+    // Update stats
+    document.getElementById('statAnalyzed').textContent = data.total || 0;
+    document.getElementById('statActionable').textContent = data.executed || 0;
+    document.getElementById('statKilled').textContent = data.killed || 0;
+    document.getElementById('statKillRate').textContent = data.kill_rate || '0%';
+
+    const edges = scanResults.filter(r => r.edge).map(r => Math.abs(r.edge));
+    const avgEdge = edges.length > 0
+      ? `${(edges.reduce((a, b) => a + b, 0) / edges.length * 100).toFixed(1)}%`
+      : '—';
+    document.getElementById('statAvgEdge').textContent = avgEdge;
+
+    renderResults();
+    loadRisk();
+    loadExits();
   } catch (err) {
-    grid.innerHTML = `<div class="empty-state"><h2>❌ Scan Failed</h2><p>${err.message}</p></div>`;
+    document.getElementById('marketGrid').innerHTML =
+      `<div class="empty-state"><h3>Scan failed</h3><p>${err.message}</p></div>`;
   }
 
+  btn.textContent = '🔍 Scan Markets';
   btn.disabled = false;
-  btn.innerHTML = '🔍 Scan Markets';
-  isScanning = false;
+  scanning = false;
 }
 
-// ─── Update Stats Bar ───
-function updateStats(data) {
-  document.getElementById('statTotal').textContent = data.total || 0;
-  document.getElementById('statExecuted').textContent = data.executed || 0;
-  document.getElementById('statKilled').textContent = data.killed || 0;
-  document.getElementById('statKillRate').textContent = data.kill_rate || '0%';
-
-  const results = data.results || [];
-  const edges = results.filter(r => r.market_edge).map(r => Math.abs(r.market_edge));
-  const avgEdge = edges.length > 0
-    ? (edges.reduce((s, e) => s + e, 0) / edges.length * 100).toFixed(1) + '%'
-    : '—';
-  document.getElementById('statAvgEdge').textContent = avgEdge;
-}
-
-// ─── Update Risk Panel ───
-async function updateRiskPanel() {
+// ─── Load Risk State ───
+async function loadRisk() {
   try {
     const res = await fetch('/api/risk');
     const data = await res.json();
-    const state = data.state || {};
-
-    document.getElementById('dailyPnl').textContent =
-      `$${(state.dailyPnL || 0).toFixed(2)}`;
-    document.getElementById('totalPnl').textContent =
-      `$${(state.totalPnL || 0).toFixed(2)}`;
-    document.getElementById('tradesToday').textContent =
-      `${state.tradesToday || 0}/5`;
-    document.getElementById('openTrades').textContent =
-      `${state.openTrades || 0}/6`;
-
-    // Breaker dots
-    setBreakerDot('dailyBreakerDot',
-      (state.dailyPnLPct || 0) > -0.03 ? 'green' :
-        (state.dailyPnLPct || 0) > -0.05 ? 'yellow' : 'red');
-
-    setBreakerDot('totalBreakerDot',
-      (state.totalPnLPct || 0) > -0.05 ? 'green' :
-        (state.totalPnLPct || 0) > -0.1 ? 'yellow' : 'red');
-
-  } catch { /* ignore */ }
+    const s = data.state || {};
+    document.getElementById('tradeBreaker').textContent = s.halted ? '⛔ HALTED' : 'OK';
+    document.getElementById('dailyPnl').textContent = `$${(s.dailyPnl || 0).toFixed(2)}`;
+    document.getElementById('totalPnl').textContent = `$${(s.totalPnl || 0).toFixed(2)}`;
+    document.getElementById('tradesToday').textContent = s.tradesToday || 0;
+    document.getElementById('openTrades').textContent = s.openTrades || 0;
+  } catch {}
 }
 
-function setBreakerDot(id, color) {
-  const dot = document.getElementById(id);
-  dot.className = `risk-dot ${color}`;
+// ─── Load Exits ───
+async function loadExits() {
+  try {
+    const res = await fetch('/api/exits');
+    const data = await res.json();
+
+    const section = document.getElementById('exitSection');
+    const open = data.open || [];
+    const closed = data.closed || [];
+    const stats = data.stats || {};
+
+    if (open.length === 0 && closed.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    // Render stats
+    const statsHtml = `
+      <div class="exit-stat-card"><span class="value">${stats.totalExits || 0}</span><span class="label">TOTAL EXITS</span></div>
+      <div class="exit-stat-card"><span class="value profit">${stats.wins || 0}</span><span class="label">WINS</span></div>
+      <div class="exit-stat-card"><span class="value loss">${stats.losses || 0}</span><span class="label">LOSSES</span></div>
+      <div class="exit-stat-card"><span class="value ${stats.totalPnL >= 0 ? 'profit' : 'loss'}">${stats.winRate || '0%'}</span><span class="label">WIN RATE</span></div>
+      <div class="exit-stat-card"><span class="value ${stats.totalPnL >= 0 ? 'profit' : 'loss'}">$${(stats.totalPnL || 0).toFixed(2)}</span><span class="label">NET P&L</span></div>
+      <div class="exit-stat-card"><span class="value">${open.length}</span><span class="label">OPEN NOW</span></div>
+    `;
+    document.getElementById('exitStats').innerHTML = statsHtml;
+
+    // Render exit cards
+    let cardsHtml = '';
+
+    // Open positions first
+    for (const p of open) {
+      cardsHtml += `
+        <div class="exit-card" style="border-left: 3px solid var(--orange);">
+          <h4>⏳ ${(p.market_name || '').slice(0, 60)}</h4>
+          <div class="exit-details">
+            <span>Entry: ${(p.entryPrice * 100).toFixed(0)}¢</span>
+            <span>Mode: ${p.mode}</span>
+            <span>Side: ${p.side}</span>
+            <span>Held: ${(p.hoursHeld || 0).toFixed(1)}h</span>
+          </div>
+          <div class="exit-pnl" style="color: var(--orange);">MONITORING...</div>
+        </div>
+      `;
+    }
+
+    // Closed positions
+    for (const p of closed.slice(0, 12)) {
+      const isProfitable = p.netPnL > 0;
+      const emoji = p.exitReason === 'TAKE_PROFIT' ? '💰'
+        : p.exitReason === 'TRAILING_STOP' ? '📈'
+        : p.exitReason === 'STOP_LOSS' ? '🛑'
+        : '⏰';
+      cardsHtml += `
+        <div class="exit-card ${isProfitable ? 'profit' : 'loss'}">
+          <h4>${emoji} ${(p.market_name || '').slice(0, 60)}</h4>
+          <div class="exit-details">
+            <span>Entry: ${(p.entryPrice * 100).toFixed(0)}¢</span>
+            <span>Exit: ${(p.exitPrice * 100).toFixed(0)}¢</span>
+            <span>Mode: ${p.mode}</span>
+            <span>Held: ${p.hoursHeld}h</span>
+          </div>
+          <div class="exit-pnl ${isProfitable ? 'profit' : 'loss'}">
+            ${isProfitable ? '+' : ''}${(p.pnlPerShare * 100).toFixed(1)}¢/share
+            <span class="exit-reason-tag reason-${p.exitReason}">${p.exitReason.replace('_', ' ')}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    document.getElementById('exitGrid').innerHTML = cardsHtml;
+  } catch {}
 }
 
-// ─── Render Market Cards ───
-function renderMarkets() {
+// ─── Render Results ───
+function renderResults() {
   const grid = document.getElementById('marketGrid');
 
   let filtered = scanResults;
   if (currentMode === 'sprint') filtered = scanResults.filter(r => r.mode === 'SPRINT');
+  if (currentMode === 'swing') filtered = scanResults.filter(r => r.mode === 'SWING');
   if (currentMode === 'marathon') filtered = scanResults.filter(r => r.mode === 'MARATHON');
 
   if (filtered.length === 0) {
-    grid.innerHTML = '<div class="empty-state"><h2>No results</h2><p>Click scan or switch tabs</p></div>';
+    grid.innerHTML = `<div class="empty-state"><h3>No results</h3><p>Click scan or switch tabs</p></div>`;
     return;
   }
-
-  // Sort: executed first, then by |edge| descending
-  filtered.sort((a, b) => {
-    const aExec = a.execution?.action !== 'HOLD' && a.execution?.action !== 'KILLED' ? 1 : 0;
-    const bExec = b.execution?.action !== 'HOLD' && b.execution?.action !== 'KILLED' ? 1 : 0;
-    if (aExec !== bExec) return bExec - aExec;
-    return Math.abs(b.market_edge || 0) - Math.abs(a.market_edge || 0);
-  });
 
   grid.innerHTML = filtered.map(r => renderCard(r)).join('');
 }
 
+// ─── Render Single Card ───
 function renderCard(r) {
   if (r.error) {
-    return `<div class="market-card hold"><div class="card-header"><div class="card-title">${esc(r.market_name || 'Error')}</div></div><div class="card-signal">❌ ${esc(r.error)}</div></div>`;
+    return `<div class="market-card"><div class="card-header"><h3>${r.market_name || 'Unknown'}</h3></div><p style="color:var(--red);font-size:11px;">${r.error}</p></div>`;
   }
 
-  const action = r.execution?.action || r.recommended_action || 'HOLD';
-  const actionClass = action === 'BUY_YES' ? 'buy-yes' : action === 'BUY_NO' ? 'buy-no' : action === 'KILLED' ? 'killed' : 'hold';
-  const modeClass = r.mode === 'SPRINT' ? 'sprint' : 'marathon';
-  const modeLabel = r.mode === 'SPRINT' ? '⚡ Sprint' : '🏔️ Marathon';
+  const modeClass = r.mode === 'SPRINT' ? 'sprint' : r.mode === 'SWING' ? 'swing' : 'marathon';
+  const modeLabel = r.mode === 'SPRINT' ? '⚡ Sprint' : r.mode === 'SWING' ? '🔥 Swing' : '🏔️ Marathon';
+  const exec = r.execution || {};
+  const action = exec.action || 'HOLD';
 
-  const edge = r.market_edge || 0;
-  const edgeColor = edge > 0.05 ? 'green' : edge < -0.05 ? 'red' : '';
-  const conf = r.confidence_score || 0;
-  const confColor = conf > 0.8 ? 'green' : conf > 0.6 ? 'amber' : 'red';
+  let actionClass = 'action-hold';
+  let actionLabel = 'HOLD';
+  if (action === 'BUY_YES') { actionClass = 'action-buy-yes'; actionLabel = '✅ BUY YES'; }
+  else if (action === 'BUY_NO') { actionClass = 'action-buy-no'; actionLabel = '❌ BUY NO'; }
+  else if (action === 'KILLED') { actionClass = 'action-killed'; actionLabel = '💀 KILLED'; }
 
-  // Gate dots
-  const gates = r.execution?.gates || [];
-  const gateDots = gates.map(g =>
-    `<div class="gate-dot ${g.pass ? 'pass' : 'fail'}" title="${esc(g.gate)}: ${esc(g.reason)}"></div>`
-  ).join('');
+  const edge = r.edge ? `${(Math.abs(r.edge) * 100).toFixed(1)}%` : '—';
+  const confidence = r.confidence ? `${(r.confidence * 100).toFixed(0)}%` : '—';
+  const price = r.current_price ? `${Math.round(r.current_price * 100)}¢` : '—';
+
+  const reason = exec.killedAt
+    ? exec.gates?.find(g => !g.pass)?.reason || ''
+    : r.reasoning || '';
+
+  // Profit target for this mode
+  const targetCents = r.mode === 'SPRINT' ? '10¢' : r.mode === 'SWING' ? '15¢' : '20¢';
 
   return `
-    <div class="market-card ${actionClass}">
+    <div class="market-card">
       <div class="card-header">
-        <div class="card-title">${esc(r.market_name || 'Unknown')}</div>
-        <div class="card-mode ${modeClass}">${modeLabel}</div>
+        <h3>${(r.market_name || '').slice(0, 70)}</h3>
+        <span class="mode-badge badge-${modeClass}">${modeLabel}</span>
       </div>
       <div class="card-metrics">
         <div class="metric">
-          <div class="metric-value ${edgeColor}">${(edge * 100).toFixed(1)}%</div>
-          <div class="metric-label">Edge</div>
+          <div class="metric-value" style="color:${parseFloat(edge) > 10 ? 'var(--green)' : 'var(--text)'}">${edge}</div>
+          <div class="metric-label">EDGE</div>
         </div>
         <div class="metric">
-          <div class="metric-value ${confColor}">${(conf * 100).toFixed(0)}%</div>
-          <div class="metric-label">Confidence</div>
+          <div class="metric-value">${confidence}</div>
+          <div class="metric-label">CONFIDENCE</div>
         </div>
         <div class="metric">
-          <div class="metric-value">${((r.market_price || 0) * 100).toFixed(0)}¢</div>
-          <div class="metric-label">Price</div>
+          <div class="metric-value">${price}</div>
+          <div class="metric-label">PRICE</div>
         </div>
       </div>
       <div class="card-action">
-        <span class="action-badge ${actionClass}">${action.replace('_', ' ')}</span>
-        <span class="bet-size">${r.execution?.betSize > 0 ? '$' + r.execution.betSize.toFixed(2) : action === 'KILLED' ? '🛑 ' + (r.execution?.killedAt || '') : '—'}</span>
+        <span class="action-tag ${actionClass}">${actionLabel}</span>
+        <span class="card-reason" style="font-size:9px;color:var(--text-dim);">Target: +${targetCents}</span>
       </div>
-      ${r.key_signal ? `<div class="card-signal">"${esc(r.key_signal.slice(0, 100))}"</div>` : ''}
-      ${gateDots ? `<div class="card-gates" title="5-Gate Kill Chain">${gateDots}</div>` : ''}
+      <div class="card-reason">${reason ? `"${reason.slice(0, 80)}"` : ''}</div>
     </div>
   `;
 }
 
-function esc(str) {
-  const d = document.createElement('div');
-  d.textContent = str || '';
-  return d.innerHTML;
-}
-
-// ─── Auto-Update Risk ───
-setInterval(updateRiskPanel, 30000);
+// ─── Init ───
+setMode('all');
+loadRisk();
+loadExits();

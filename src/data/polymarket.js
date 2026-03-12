@@ -48,7 +48,7 @@ export async function fetchActiveMarkets(limit = 20, offset = 0) {
         liquidity: parseFloat(mkt.liquidity || 0),
         endDate: endDate,
         hoursLeft: hoursLeft,
-        mode: hoursLeft <= 24 ? 'SPRINT' : 'MARATHON',
+        mode: hoursLeft <= 24 ? 'SPRINT' : hoursLeft <= 168 ? 'SWING' : 'MARATHON',
         clobTokenIds: mkt.clobTokenIds || [],
         active: mkt.active,
         closed: mkt.closed

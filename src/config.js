@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
-// PolyAlpha v5 FORTRESS — Central Configuration
-// 6-Layer Dual-Mode | Max 10% Loss | 5-Gate Kill Chain
+// PolyAlpha v5.1 FORTRESS — Central Configuration
+// 6-Layer Triple-Mode | Profit-Taking Scalper | Max 10% Loss
 // ═══════════════════════════════════════════════════════════
 
 export const CONFIG = {
@@ -9,20 +9,45 @@ export const CONFIG = {
   SPRINT: {
     DECAY_LAMBDA: 0.5,
     NEWS_MAX_AGE_MIN: 30,
-    EDGE_THRESHOLD: 0.08,
+    EDGE_THRESHOLD: 0.06,
     KELLY_FRACTION: 0.25,
     WEIGHTS: { news: 0.65, volume: 0.25, momentum: 0.10 },
-    MAX_BET_PCT: 0.03
+    MAX_BET_PCT: 0.03,
+    // Profit-Taking (spread-adjusted)
+    TAKE_PROFIT: 0.10,    // +10¢ net
+    STOP_LOSS: 0.07,      // -7¢ net
+    TRAILING_STOP: 0.03,  // 3¢ behind peak
+    MAX_HOLD_HOURS: 6     // Auto-exit after 6 hours
   },
 
-  // 🏔️ MARATHON MODE — Markets resolving > 24 hours
+  // 🔥 SWING MODE — Markets resolving 1–7 days
+  SWING: {
+    DECAY_LAMBDA: 0.1,
+    NEWS_MAX_AGE_MIN: 360,       // 6 hours of news
+    EDGE_THRESHOLD: 0.08,
+    KELLY_FRACTION: 0.20,
+    WEIGHTS: { news: 0.50, volume: 0.25, momentum: 0.25 },
+    MAX_BET_PCT: 0.025,
+    // Profit-Taking (spread-adjusted)
+    TAKE_PROFIT: 0.15,    // +15¢ net
+    STOP_LOSS: 0.07,      // -7¢ net
+    TRAILING_STOP: 0.04,  // 4¢ behind peak
+    MAX_HOLD_HOURS: 72    // Auto-exit after 3 days
+  },
+
+  // 🏔️ MARATHON MODE — Markets resolving > 7 days
   MARATHON: {
     DECAY_LAMBDA: 0.02,
-    NEWS_MAX_AGE_MIN: 4320,
+    NEWS_MAX_AGE_MIN: 4320,      // 72 hours of news
     EDGE_THRESHOLD: 0.12,
     KELLY_FRACTION: 0.15,
     WEIGHTS: { news: 0.40, volume: 0.20, momentum: 0.40 },
-    MAX_BET_PCT: 0.02
+    MAX_BET_PCT: 0.02,
+    // Profit-Taking (spread-adjusted)
+    TAKE_PROFIT: 0.20,    // +20¢ net
+    STOP_LOSS: 0.07,      // -7¢ net
+    TRAILING_STOP: 0.05,  // 5¢ behind peak
+    MAX_HOLD_HOURS: 336   // Auto-exit after 14 days
   },
 
   // 🔒 HARD LIMITS — Non-overridable

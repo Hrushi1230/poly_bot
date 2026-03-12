@@ -54,9 +54,9 @@ function printBanner() {
 ║     ██╔═══╝ ██║   ██║██║    ╚██╔╝  ██╔══██║             ║
 ║     ██║     ╚██████╔╝███████╗██║   ██║  ██║             ║
 ║     ╚═╝      ╚═════╝ ╚══════╝╚═╝   ╚═╝  ╚═╝             ║
-║         v5 FORTRESS — 6-Layer Quant Engine               ║
-║     ⚡ Sprint (<24h)  |  🏔️ Marathon (>24h)               ║
-║     5-Gate Kill Chain | Max 10% Loss Protection          ║
+║       v5.1 FORTRESS — 6-Layer Quant + Scalper            ║
+║   ⚡ Sprint (<24h) | 🔥 Swing (1-7d) | 🏔️ Marathon (>7d) ║
+║   Exit: +10¢/+15¢/+20¢ | Stop: -7¢ | Kill Chain: 5      ║
 ╚═══════════════════════════════════════════════════════════╝
   `);
 }
@@ -96,6 +96,8 @@ async function runScan(opts) {
   let markets = allMarkets;
   if (opts.mode === 'sprint') {
     markets = allMarkets.filter(m => m.mode === 'SPRINT');
+  } else if (opts.mode === 'swing') {
+    markets = allMarkets.filter(m => m.mode === 'SWING');
   } else if (opts.mode === 'marathon') {
     markets = allMarkets.filter(m => m.mode === 'MARATHON');
   }
@@ -108,7 +110,7 @@ async function runScan(opts) {
 
   for (let i = 0; i < markets.length; i++) {
     const market = markets[i];
-    const modeIcon = market.mode === 'SPRINT' ? '⚡' : '🏔️';
+    const modeIcon = market.mode === 'SPRINT' ? '⚡' : market.mode === 'SWING' ? '🔥' : '🏔️';
 
     process.stdout.write(`  [${i + 1}/${markets.length}] ${modeIcon} Analyzing: ${market.question.slice(0, 60)}...`);
 
@@ -173,7 +175,7 @@ async function runScan(opts) {
   if (actionable.length > 0) {
     console.log('\n🎯 ACTIONABLE TRADES:\n');
     for (const trade of actionable) {
-      console.log(`  ${trade.mode === 'SPRINT' ? '⚡' : '🏔️'} ${trade.market_name.slice(0, 55)}`);
+      console.log(`  ${trade.mode === 'SPRINT' ? '⚡' : trade.mode === 'SWING' ? '🔥' : '🏔️'} ${trade.market_name.slice(0, 55)}`);
       console.log(`     Action: ${trade.execution.action} | Edge: ${(trade.market_edge * 100).toFixed(1)}% | Confidence: ${(trade.confidence_score * 100).toFixed(0)}%`);
       console.log(`     Bet: $${trade.execution.betSize.toFixed(2)} | Signal: ${trade.key_signal.slice(0, 70)}`);
       console.log();
