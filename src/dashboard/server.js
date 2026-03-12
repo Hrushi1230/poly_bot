@@ -24,7 +24,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const risk = new RiskManager(1000);
 
-app.use(express.static(join(__dirname, 'public')));
+// ─── Serve React Frontend ───
+app.use(express.static(join(__dirname, 'react-ui', 'dist')));
 app.use(express.json());
 
 // ─── API: Test Connections ───
