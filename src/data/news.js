@@ -51,7 +51,16 @@ export async function fetchNewsForMarket(marketQuestion, mode = 'SPRINT') {
 
     if (!res.ok) return [];
 
-    const data = await res.json();
+    const textData = await res.text();
+    let data;
+    try {
+      data = JSON.parse(textData);
+    } catch {
+      // GDELT often returns plain text "One or more..." errors
+      console.log(`[NEWS] 〽️ GDELT API rate-limit/error on "${query}" — moving on`);
+      return [];
+    }
+
     const articles = (data.articles || []).map(article => ({
       title: article.title || '',
       url: article.url || '',
@@ -96,7 +105,14 @@ export async function fetchTranslingual(marketQuestion) {
 
     if (!res.ok) return [];
 
-    const data = await res.json();
+    const textData = await res.text();
+    let data;
+    try {
+      data = JSON.parse(textData);
+    } catch {
+      return []; // Silently ignore translingual API limits
+    }
+    
     return (data.articles || []).map(a => ({
       title: a.title || '',
       url: a.url || '',
