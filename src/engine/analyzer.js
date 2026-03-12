@@ -144,12 +144,14 @@ export async function analyzeMarket(market, allMarkets = [], balance = 1000) {
         alpha: round(alphaScan.alphaScore)
       },
       market_health: {
+        spread: round(orderBook.spread),
         spread_pct: round(orderBook.spreadPct),
         volume_24h: round(market.volume24hr),
         ofi: round(orderBook.ofi),
         volatility: round(momentum.volatility),
         liquidity: round(orderBook.totalDepth)
       },
+      orderBook,
       top_signals: topSignals,
       articles_analyzed: allArticles.length,
       hours_to_resolution: round(market.hoursLeft),
