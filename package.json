@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node src/dashboard/server.js",
     "dev": "node --watch src/index.js",
     "scan:sprint": "node src/cli.js --mode sprint",
     "scan:marathon": "node src/cli.js --mode marathon",
