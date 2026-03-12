@@ -21,11 +21,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const risk = new RiskManager(1000);
-
-// ─── Serve React Frontend ───
-app.use(express.static(join(__dirname, 'react-ui', 'dist')));
+// ─── Static Frontend ───
+app.use(express.static(join(__dirname, 'public')));
 app.use(express.json());
 
 // ─── API: Test Connections ───
