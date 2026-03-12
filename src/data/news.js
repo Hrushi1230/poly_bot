@@ -44,7 +44,7 @@ export async function fetchNewsForMarket(marketQuestion, mode = 'SPRINT') {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const timer = setTimeout(() => controller.abort(), 25000);
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
@@ -84,7 +84,7 @@ export async function fetchTranslingual(marketQuestion) {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
+    const timer = setTimeout(() => controller.abort(), 25000);
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
