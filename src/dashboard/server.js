@@ -40,7 +40,9 @@ app.get('/api/scan', async (req, res) => {
   const balance = parseFloat(req.query.balance) || 1000;
 
   try {
-    let allMarkets = await getTopMarkets(top * 2);
+    // Pull a massive amount of markets so we don't miss Sprint/Swing ones
+    // which naturally have lower volume than Marathons
+    let allMarkets = await getTopMarkets(500);
     let markets = allMarkets;
 
     if (mode === 'sprint') markets = allMarkets.filter(m => m.mode === 'SPRINT');
@@ -151,7 +153,7 @@ app.get('/api/config', (req, res) => {
 cron.schedule('0 * * * *', async () => {
   console.log('\n[CRON] ⏰ Running hourly market scan (all 3 modes)...');
   try {
-    const allMarkets = await getTopMarkets(60);
+    const allMarkets = await getTopMarkets(500);
 
     for (const modeName of ['SPRINT', 'SWING', 'MARATHON']) {
       const modeMarkets = allMarkets.filter(m => m.mode === modeName).slice(0, 10);

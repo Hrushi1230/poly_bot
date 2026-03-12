@@ -61,7 +61,8 @@ export async function fetchNewsForMarket(marketQuestion, mode = 'SPRINT') {
       socialimage: article.socialimage || '',
       domain: extractDomain(article.url || article.domain || ''),
       ageMinutes: calculateAgeMinutes(article.seendate),
-      credibility: getCredibility(article.url || article.domain || '')
+      credibility: getCredibility(article.url || article.domain || ''),
+      translingual: false
     }));
 
     // Filter by max age and sort by recency
@@ -69,7 +70,11 @@ export async function fetchNewsForMarket(marketQuestion, mode = 'SPRINT') {
       .filter(a => a.ageMinutes <= maxAge)
       .sort((a, b) => a.ageMinutes - b.ageMinutes);
   } catch (err) {
-    console.log(`[NEWS] ⚠️ GDELT fetch failed: ${err.message}`);
+    if (err.name === 'AbortError') {
+      console.log(`[NEWS] 〽️ GDELT timeout on "${query}" — moving on without news`);
+    } else {
+      console.log(`[NEWS] ⚠️ GDELT fetch failed: ${err.message}`);
+    }
     return [];
   }
 }
