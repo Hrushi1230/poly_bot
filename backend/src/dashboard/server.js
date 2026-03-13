@@ -150,14 +150,16 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// ─── Background Worker: Hourly Market Scan ───
-cron.schedule('0 * * * *', async () => {
-  console.log('\n[CRON] ⏰ Running hourly market scan (all 3 modes)...');
+// ─── Background Worker: Minutely Market Scan (HFT Mode) ───
+cron.schedule('* * * * *', async () => {
+  console.log('\n[CRON] ⚡ Running high-frequency market scan (Einstein Mode)...');
   try {
     const allMarkets = await getTopMarkets(500);
 
+    // Prioritize SPRINT markets for HFT
     for (const modeName of ['SPRINT', 'SWING', 'MARATHON']) {
-      const modeMarkets = allMarkets.filter(m => m.mode === modeName).slice(0, 10);
+      const limit = modeName === 'SPRINT' ? 25 : modeName === 'SWING' ? 10 : 5;
+      const modeMarkets = allMarkets.filter(m => m.mode === modeName).slice(0, limit);
       for (const market of modeMarkets) {
         try {
           const analysis = await analyzeMarket(market, allMarkets, 1000);
@@ -185,14 +187,14 @@ cron.schedule('0 * * * *', async () => {
       }
     }
 
-    console.log('[CRON] ✅ Hourly scan complete (Sprint + Swing + Marathon).');
+    console.log('[CRON] ✅ Minutely scan complete (Sprint + Swing + Marathon).');
   } catch (err) {
-    console.error('[CRON] ❌ Hourly scan failed:', err.message);
+    console.error('[CRON] ❌ Minutely scan failed:', err.message);
   }
 });
 
-// ─── Background Worker: Exit Monitor (every 5 min) ───
-cron.schedule('*/5 * * * *', async () => {
+// ─── Background Worker: Exit Monitor (every 1 min for HFT) ───
+cron.schedule('* * * * *', async () => {
   const openCount = getOpenPositions().length;
   if (openCount === 0) return; // Nothing to monitor
 

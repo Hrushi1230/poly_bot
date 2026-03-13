@@ -9,7 +9,8 @@ export const CONFIG = {
   SPRINT: {
     DECAY_LAMBDA: 0.5,
     NEWS_MAX_AGE_MIN: 30,
-    EDGE_THRESHOLD: 0.06,
+    // [HFT UPGRADE]: Dropped edge threshold from 6% to 2% to take frequent scalps
+    EDGE_THRESHOLD: 0.02,
     KELLY_FRACTION: 0.25,
     WEIGHTS: { news: 0.65, volume: 0.25, momentum: 0.10 },
     MAX_BET_PCT: 0.03,
@@ -24,7 +25,7 @@ export const CONFIG = {
   SWING: {
     DECAY_LAMBDA: 0.1,
     NEWS_MAX_AGE_MIN: 360,       // 6 hours of news
-    EDGE_THRESHOLD: 0.08,
+    EDGE_THRESHOLD: 0.03,        // Dropped from 8% to 3%
     KELLY_FRACTION: 0.20,
     WEIGHTS: { news: 0.50, volume: 0.25, momentum: 0.25 },
     MAX_BET_PCT: 0.025,
@@ -52,14 +53,14 @@ export const CONFIG = {
 
   // 🔒 HARD LIMITS — Non-overridable
   SHARED: {
-    MAX_SPREAD: 0.03,
-    MIN_24H_VOLUME: 10000,
-    MAX_DAILY_DRAWDOWN: 0.05,
-    MAX_TOTAL_DRAWDOWN: 0.10,
+    MAX_SPREAD: 0.05,            // Increased from 3% to 5% to allow more pairs
+    MIN_24H_VOLUME: 5000,        // Lowered volume floor for more variety
+    MAX_DAILY_DRAWDOWN: 0.20,    // Paper trading max DD raised to 20%
+    MAX_TOTAL_DRAWDOWN: 0.20,
     MAX_TRADE_LOSS: 0.02,
-    MAX_OPEN_TRADES: 6,
-    MAX_TRADES_PER_DAY: 5,
-    MIN_CONFIDENCE: 0.70,
+    MAX_OPEN_TRADES: 100,        // HFT MODE: up from 6 to 100
+    MAX_TRADES_PER_DAY: 500,     // HFT MODE: up from 5 to 500
+    MIN_CONFIDENCE: 0.50,        // HFT MODE: lower confidence floor to allow action
     ORDER_TYPE: 'LIMIT'
   },
 
