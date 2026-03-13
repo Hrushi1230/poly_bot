@@ -151,7 +151,13 @@ app.get('/api/config', (req, res) => {
 });
 
 // ─── Background Worker: Minutely Market Scan (HFT Mode) ───
+let isScanning = false;
 cron.schedule('* * * * *', async () => {
+  if (isScanning) {
+    console.log('[CRON] ⚠️ Skip scan: Previous scan is still running.');
+    return;
+  }
+  isScanning = true;
   console.log('\n[CRON] ⚡ Running high-frequency market scan (Einstein Mode)...');
   try {
     const allMarkets = await getTopMarkets(500);
@@ -190,13 +196,19 @@ cron.schedule('* * * * *', async () => {
     console.log('[CRON] ✅ Minutely scan complete (Sprint + Swing + Marathon).');
   } catch (err) {
     console.error('[CRON] ❌ Minutely scan failed:', err.message);
+  } finally {
+    isScanning = false;
   }
 });
 
 // ─── Background Worker: Exit Monitor (every 1 min for HFT) ───
+let isMonitoring = false;
 cron.schedule('* * * * *', async () => {
+  if (isMonitoring) return;
   const openCount = getOpenPositions().length;
   if (openCount === 0) return; // Nothing to monitor
+
+  isMonitoring = true;
 
   console.log(`[EXIT-MONITOR] 👁️ Checking ${openCount} open position(s)...`);
   try {
@@ -207,6 +219,8 @@ cron.schedule('* * * * *', async () => {
     }
   } catch (err) {
     console.error('[EXIT-MONITOR] ❌ Check failed:', err.message);
+  } finally {
+    isMonitoring = false;
   }
 });
 
