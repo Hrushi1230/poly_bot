@@ -9,9 +9,9 @@ const MODE_STYLES = {
 export function MarketCard({ market }) {
   const mode = market.mode || 'SPRINT';
   const style = MODE_STYLES[mode] || MODE_STYLES.SPRINT;
-  const action = market?.execution?.action || 'HOLD';
-  const edge = ((market.edge || 0) * 100).toFixed(1);
-  const confidence = ((market.confidence || 0) * 100).toFixed(0);
+  const action = market?.execution?.action || market?.recommended_action || 'HOLD';
+  const edge = ((market.market_edge || market.edge || 0) * 100).toFixed(1);
+  const confidence = ((market.confidence_score || market.confidence || 0) * 100).toFixed(0);
   const isBuy = action === 'BUY_YES' || action === 'BUY_NO';
   const isKilled = action === 'KILLED';
 
@@ -28,7 +28,7 @@ export function MarketCard({ market }) {
             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${style.badge}`}>
               {style.icon} {mode}
             </span>
-            {market.smart_money && (
+            {(market.smart_money || market.signals?.volume > 0.6) && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded border bg-orange-500/10 text-orange-400 border-orange-500/20 flex items-center gap-0.5">
                 <Zap size={9} /> SM
               </span>

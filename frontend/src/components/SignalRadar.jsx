@@ -3,14 +3,14 @@ import { ResponsiveContainer, Radar, RadarChart, PolarGrid, PolarAngleAxis, Pola
 export function SignalRadar({ market }) {
   const signals = market?.signals || {};
   const data = [
-    { axis: 'News',       v: Math.max(0, Math.min(100, (signals.sentiment?.score || 0.5) * 100)) },
-    { axis: 'Alpha',      v: Math.max(0, Math.min(100, Math.abs(signals.alpha?.ofi || 0.3) * 100)) },
-    { axis: 'Momentum',   v: Math.max(0, Math.min(100, (signals.momentum?.strength || 0.4) * 100)) },
-    { axis: 'SmartMoney', v: market?.smart_money ? 85 : 25 },
-    { axis: 'Sentiment',  v: Math.max(0, Math.min(100, (signals.sentiment?.magnitude || 0.6) * 100)) },
+    { axis: 'News',       v: Math.max(0, Math.min(100, (signals.news || 0.5) * 100)) },
+    { axis: 'Alpha',      v: Math.max(0, Math.min(100, Math.abs(signals.alpha || 0) * 100)) },
+    { axis: 'Momentum',   v: Math.max(0, Math.min(100, (signals.momentum || 0) * 100 + 50)) },
+    { axis: 'SmartMoney', v: Math.max(0, Math.min(100, (signals.volume || 0.25) * 100)) },
+    { axis: 'Sentiment',  v: Math.max(0, Math.min(100, (signals.news || 0.5) * 80 + 20)) },
   ];
 
-  const action = market?.execution?.action || 'HOLD';
+  const action = market?.execution?.action || market?.recommended_action || 'HOLD';
   const stroke = action === 'BUY_YES' ? '#2ECC71' : action === 'BUY_NO' ? '#FF4D4F' : '#00E5FF';
   const fill   = action === 'BUY_YES' ? 'rgba(46,204,113,0.25)' : action === 'BUY_NO' ? 'rgba(255,77,79,0.25)' : 'rgba(0,229,255,0.2)';
 
