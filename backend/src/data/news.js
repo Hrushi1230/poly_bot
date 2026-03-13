@@ -112,7 +112,7 @@ export async function fetchTranslingual(marketQuestion) {
     } catch {
       return []; // Silently ignore translingual API limits
     }
-    
+
     return (data.articles || []).map(a => ({
       title: a.title || '',
       url: a.url || '',

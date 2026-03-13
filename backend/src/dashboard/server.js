@@ -1,12 +1,10 @@
 // ═══════════════════════════════════════════════════════════
-// PolyAlpha v5.1 — Dashboard Server
+// PolyAlpha v6 — Pure API Server (No UI)
 // Express + Cron + Triple Mode + Exit Monitor
 // ═══════════════════════════════════════════════════════════
 
 import express from 'express';
 import cron from 'node-cron';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { getTopMarkets, testConnection as testPoly } from '../data/polymarket.js';
 import { testConnection as testGdelt } from '../data/news.js';
 import { analyzeMarket } from '../engine/analyzer.js';
@@ -17,12 +15,14 @@ import { logPrediction, compareExpectedVsActual, suggestWeightAdjustments } from
 import { getPaperReport, recordPaperTrade } from '../paper-trader.js';
 import { CONFIG } from '../config.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
 const app = express();
-// ─── Static Frontend ───
-app.use(express.static(join(__dirname, 'public')));
+
+// ─── CORS: Allow React frontend to connect ───
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
 app.use(express.json());
 
 // ─── API: Test Connections ───
@@ -209,10 +209,10 @@ cron.schedule('*/5 * * * *', async () => {
 app.listen(PORT, () => {
   console.log(`
 ╔═══════════════════════════════════════════════════╗
-║   PolyAlpha v5.1 FORTRESS — Dashboard            ║
-║   http://localhost:${PORT}                           ║
-║   ⚡ Sprint  |  🔥 Swing  |  🏔️ Marathon          ║
-║   💰 Auto Exit: +10¢/+15¢/+20¢ | Stop: -7¢      ║
+║   PolyAlpha v6 FORTRESS — API Server (No UI)      ║
+║   http://localhost:${PORT}                        ║
+║   ⚡ Sprint  |  🔥 Swing  |  🏔️ Marathon        ║
+║   💰 Auto Exit: +10¢/+15¢/+20¢ | Stop: -7¢       ║
 ╚═══════════════════════════════════════════════════╝
   `);
 });

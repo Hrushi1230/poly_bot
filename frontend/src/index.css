@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Anti-Gravity Glass System ─── */
+@layer utilities {
+  .glass-panel {
+    @apply bg-midnight-900 bg-opacity-80 backdrop-blur-md border border-white/5 shadow-xl;
+  }
+  .glass-card {
+    @apply bg-midnight-800 bg-opacity-90 backdrop-blur-sm border border-white/5;
+  }
+  .glass-float {
+    @apply shadow-float transition-all duration-300 ease-out;
+  }
+  .glass-float:hover {
+    @apply -translate-y-1 shadow-glow-cyan;
+  }
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1B232A; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #252E38; }
