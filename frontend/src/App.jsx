@@ -3,174 +3,208 @@ import { TopBar } from './components/TopBar';
 import { MarketCard } from './components/MarketCard';
 import { SignalRadar } from './components/SignalRadar';
 import { RiskPanel } from './components/RiskPanel';
-import { Newspaper } from 'lucide-react';
+import { Newspaper, Loader2 } from 'lucide-react';
 
-// Mock data — will be replaced with /api/scan fetch
-const MOCK_MARKETS = [
-  { market_name: 'Will Bitcoin hit $100k by July 2026?', mode: 'SPRINT', edge: 0.082, confidence: 0.74, smart_money: true, execution: { action: 'BUY_YES', gatesPassed: 6 }, market_health: { liquidity: 85000, spread: 0.015 }, signals: { sentiment: { score: 0.72, magnitude: 0.8 }, alpha: { ofi: 0.45 }, momentum: { strength: 0.6 } } },
-  { market_name: 'Fed cuts interest rates 50+ bps in 2026?', mode: 'SWING', edge: 0.054, confidence: 0.61, smart_money: false, execution: { action: 'BUY_NO', gatesPassed: 5 }, market_health: { liquidity: 120000, spread: 0.012 }, signals: { sentiment: { score: 0.4, magnitude: 0.5 }, alpha: { ofi: 0.3 }, momentum: { strength: 0.35 } } },
-  { market_name: 'Chelsea win 2025-26 EPL?', mode: 'MARATHON', edge: 0.021, confidence: 0.42, smart_money: false, execution: { action: 'KILLED', gatesPassed: 2 }, market_health: { liquidity: 45000, spread: 0.035 }, signals: { sentiment: { score: 0.3, magnitude: 0.3 }, alpha: { ofi: 0.1 }, momentum: { strength: 0.2 } } },
-  { market_name: 'ETH flips BTC market cap by Dec 2026?', mode: 'SPRINT', edge: 0.11, confidence: 0.68, smart_money: true, execution: { action: 'BUY_YES', gatesPassed: 6 }, market_health: { liquidity: 200000, spread: 0.008 }, signals: { sentiment: { score: 0.85, magnitude: 0.9 }, alpha: { ofi: 0.7 }, momentum: { strength: 0.75 } } },
-  { market_name: 'US recession declared in 2026?', mode: 'SWING', edge: 0.035, confidence: 0.55, smart_money: false, execution: { action: 'HOLD', gatesPassed: 3 }, market_health: { liquidity: 95000, spread: 0.022 }, signals: { sentiment: { score: 0.5, magnitude: 0.45 }, alpha: { ofi: 0.2 }, momentum: { strength: 0.4 } } },
-];
+// Backend API base — reads from .env (empty string = use Vite proxy in dev)
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export default function App() {
-  const [markets, setMarkets] = useState(MOCK_MARKETS);
-  const [selected, setSelected] = useState(MOCK_MARKETS[0]);
-  const [riskState, setRiskState] = useState({ halted: false, pnl: 0, activeTrades: 0, dailyLoss: 0, maxLoss: 100, tradesToday: 0, maxTrades: 5, breakers: [false, false, false] });
+  const [markets, setMarkets] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [riskState, setRiskState] = useState({
+    halted: false, pnl: 0, activeTrades: 0,
+    dailyLoss: 0, maxLoss: 100, tradesToday: 0,
+    maxTrades: 5, breakers: [false, false, false]
+  });
   const [recentExits, setRecentExits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Initial fetch
     const fetchData = async () => {
       try {
+        setError(null);
         const [scanRes, riskRes, exitsRes] = await Promise.all([
-          fetch('/api/scan?mode=all&top=10'),
-          fetch('/api/risk'),
-          fetch('/api/exits')
+          fetch(`${API_BASE}/api/scan?mode=all&top=10`),
+          fetch(`${API_BASE}/api/risk`),
+          fetch(`${API_BASE}/api/exits`)
         ]);
-        
+
+        // Markets
         if (scanRes.ok) {
           const scanData = await scanRes.json();
           if (scanData.results && scanData.results.length > 0) {
-            setMarkets(scanData.results);
-            setSelected(scanData.results[0]); // Select first by default
+            // Map backend response to component-friendly shape
+            const mapped = scanData.results.map(r => ({
+              ...r,
+              execution: {
+                ...r.execution,
+                gatesPassed: r.execution?.gates
+                  ? r.execution.gates.filter(g => g.pass).length
+                  : 0
+              }
+            }));
+            setMarkets(mapped);
+            setSelected(prev => prev || mapped[0]);
           }
+        } else {
+          setError('Failed to fetch markets');
         }
-        
+
+        // Risk
         if (riskRes.ok) {
           const riskData = await riskRes.json();
-          if (riskData.state && riskData.performance) {
+          if (riskData.state) {
             setRiskState({
-              halted: riskData.state.isHalted,
-              pnl: riskData.performance.totalPnL,
-              activeTrades: riskData.performance.totalTrades - riskData.performance.winningTrades - riskData.performance.losingTrades, // Approximation if active isn't exposed directly
-              dailyLoss: riskData.state.dailyLoss,
-              maxLoss: 1000 * 0.10, // 10% of 1000
-              tradesToday: riskData.state.tradeCountDaily,
-              maxTrades: 5,
-              breakers: riskData.state.circuitBreakers ? Object.values(riskData.state.circuitBreakers) : [false, false, false]
+              halted: riskData.state.isHalted || false,
+              pnl: riskData.performance?.totalPnL || 0,
+              activeTrades: riskData.state.activePositions || 0,
+              dailyLoss: riskData.state.dailyLoss || 0,
+              maxLoss: (riskData.config?.MAX_LOSS_PCT || 0.1) * 1000,
+              tradesToday: riskData.state.tradeCountDaily || 0,
+              maxTrades: riskData.config?.MAX_TRADES_PER_DAY || 5,
+              breakers: riskData.state.circuitBreakers
+                ? Object.values(riskData.state.circuitBreakers)
+                : [false, false, false]
             });
           }
         }
 
+        // Exits
         if (exitsRes.ok) {
           const exitsData = await exitsRes.json();
           if (exitsData.closed) {
-            setRecentExits(exitsData.closed.slice(0, 5)); // Keep top 5
+            setRecentExits(exitsData.closed.slice(0, 5));
           }
         }
       } catch (err) {
-        console.error("Failed to fetch backend data:", err);
+        console.error('Failed to fetch backend data:', err);
+        setError('Cannot reach backend — is it running?');
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchData();
-    // Poll every 15 seconds to simulate live feed
     const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden bg-midnight-950">
-      
-      {/* ─── Background Ambient Glow (Bottom Layer: Sea of Data) ─── */}
+
+      {/* ─── Background Ambient Glow (Bottom Layer) ─── */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-[-15%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-cyan-500 opacity-[0.03] blur-[150px]" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-orange-500 opacity-[0.02] blur-[150px]" />
-        {/* Subtle grid pattern */}
         <div className="absolute inset-0 opacity-[0.02]" style={{
           backgroundImage: 'linear-gradient(rgba(0,229,255,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,255,0.3) 1px, transparent 1px)',
           backgroundSize: '60px 60px'
         }} />
       </div>
 
-      {/* ─── Top Layer: TopBar ─── */}
-      <TopBar riskState={{ 
-        halted: riskState.halted, 
-        pnl: riskState.pnl, 
-        activeTrades: riskState.activeTrades 
+      {/* ─── TopBar ─── */}
+      <TopBar riskState={{
+        halted: riskState.halted,
+        pnl: riskState.pnl,
+        activeTrades: riskState.activeTrades
       }} />
 
-      {/* ─── Middle Layer: Command Center ─── */}
-      <main className="relative z-10 flex-1 w-full max-w-[1440px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-[340px_1fr_320px] gap-6">
-        
-        {/* Left Column: Market Feed */}
-        <section className="flex flex-col gap-4 max-h-[calc(100vh-90px)] overflow-y-auto pr-1">
-          <h2 className="text-[11px] font-bold tracking-widest uppercase text-muted flex items-center gap-2 sticky top-0 bg-midnight-950 py-2 z-10">
-            <Newspaper size={14} className="text-cyan-500" /> Live Market Feed
-          </h2>
-          {markets.map((m, i) => (
-            <div key={i} onClick={() => setSelected(m)}>
-              <MarketCard market={m} />
-            </div>
-          ))}
-        </section>
+      {/* ─── Loading state ─── */}
+      {loading && (
+        <div className="flex-1 flex items-center justify-center z-10">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={32} className="text-cyan-500 animate-spin" />
+            <span className="text-sm text-muted font-mono">Scanning markets...</span>
+          </div>
+        </div>
+      )}
 
-        {/* Center Column: Signal Analyzer */}
-        <section className="flex flex-col gap-5">
-          {/* Selected Market Header */}
-          <div className="glass-panel rounded-card p-5">
-            <span className="text-[9px] text-muted uppercase tracking-widest font-semibold block mb-1">Analyzing</span>
-            <h2 className="text-lg font-bold text-white leading-tight">
-              {selected?.market_name || 'Select a market'}
+      {/* ─── Error state ─── */}
+      {!loading && error && markets.length === 0 && (
+        <div className="flex-1 flex items-center justify-center z-10">
+          <div className="glass-panel rounded-card p-8 text-center max-w-md">
+            <span className="text-red-400 font-mono text-sm block mb-2">⚠ Connection Error</span>
+            <p className="text-muted text-xs">{error}</p>
+            <p className="text-muted text-[10px] mt-2 font-mono">API: {API_BASE || 'localhost (proxy)'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Command Center (only when data is loaded) ─── */}
+      {!loading && markets.length > 0 && (
+        <main className="relative z-10 flex-1 w-full max-w-[1440px] mx-auto p-6 grid grid-cols-1 lg:grid-cols-[340px_1fr_320px] gap-6">
+
+          {/* Left Column: Market Feed */}
+          <section className="flex flex-col gap-4 max-h-[calc(100vh-90px)] overflow-y-auto pr-1">
+            <h2 className="text-[11px] font-bold tracking-widest uppercase text-muted flex items-center gap-2 sticky top-0 bg-midnight-950 py-2 z-10">
+              <Newspaper size={14} className="text-cyan-500" /> Live Market Feed
+              <span className="ml-auto text-[9px] text-cyan-500/60 font-mono">{markets.length} markets</span>
             </h2>
-          </div>
+            {markets.map((m, i) => (
+              <div key={m.market_id || i} onClick={() => setSelected(m)}>
+                <MarketCard market={m} />
+              </div>
+            ))}
+          </section>
 
-          {/* Signal Radar */}
-          <SignalRadar market={selected} />
+          {/* Center Column: Signal Analyzer */}
+          <section className="flex flex-col gap-5">
+            <div className="glass-panel rounded-card p-5">
+              <span className="text-[9px] text-muted uppercase tracking-widest font-semibold block mb-1">Analyzing</span>
+              <h2 className="text-lg font-bold text-white leading-tight">
+                {selected?.market_name || 'Select a market'}
+              </h2>
+            </div>
 
-          {/* Mini Orderbook Placeholder */}
-          <div className="glass-panel rounded-card p-4">
-            <h3 className="text-[10px] font-bold tracking-widest uppercase text-muted mb-3">Order Book Depth</h3>
-            <div className="flex items-end gap-0.5 h-[100px] justify-center">
-              {/* Bid bars (green, left) */}
-              {[65,80,45,90,70,55].map((h, i) => (
-                <div key={`bid-${i}`} className="w-4 rounded-t bg-green-500/30 border border-green-500/20 transition-all hover:bg-green-500/50" style={{ height: `${h}%` }} />
-              ))}
-              {/* Midpoint */}
-              <div className="w-px h-full bg-cyan-500 mx-1 shadow-[0_0_4px_rgba(0,229,255,0.5)]" />
-              {/* Ask bars (red, right) */}
-              {[75,60,85,40,70,50].map((h, i) => (
-                <div key={`ask-${i}`} className="w-4 rounded-t bg-red-500/30 border border-red-500/20 transition-all hover:bg-red-500/50" style={{ height: `${h}%` }} />
-              ))}
-            </div>
-            <div className="flex justify-between mt-2 text-[10px] font-mono text-muted">
-              <span className="text-green-400">Bids</span>
-              <span className="text-cyan-400 font-bold">50.2¢</span>
-              <span className="text-red-400">Asks</span>
-            </div>
-          </div>
-        </section>
+            <SignalRadar market={selected} />
 
-        {/* Right Column: Risk Panel */}
-        <section className="flex flex-col gap-5">
-          <RiskPanel riskState={{
-            dailyLoss: riskState.dailyLoss,
-            maxLoss: riskState.maxLoss,
-            tradesToday: riskState.tradesToday,
-            maxTrades: riskState.maxTrades,
-            breakers: riskState.breakers
-          }} />
-          
-          {/* Recent Exits */}
-          <div className="glass-panel rounded-card p-5 flex-1 max-h-[300px] overflow-y-auto custom-scrollbar">
-            <h3 className="text-[10px] font-bold tracking-widest uppercase text-muted mb-3">Recent Exits</h3>
-            <div className="space-y-3">
-              {recentExits.length > 0 ? recentExits.map((exit, i) => (
-                <div key={i} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-                  <span className="text-xs text-white truncate max-w-[180px]">{exit.market_name || exit.id}</span>
-                  <span className={`font-mono text-xs font-bold ${exit.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {exit.pnl >= 0 ? '+' : ''}{(exit.pnl * 100).toFixed(1)}¢
-                  </span>
-                </div>
-              )) : (
-                <span className="text-xs text-muted italic">No recent exits available...</span>
-              )}
+            {/* Order Book Depth (from live spread data) */}
+            <div className="glass-panel rounded-card p-4">
+              <h3 className="text-[10px] font-bold tracking-widest uppercase text-muted mb-3">Order Book Depth</h3>
+              <div className="flex items-end gap-0.5 h-[100px] justify-center">
+                {markets.slice(0, 6).map((m, i) => (
+                  <div key={`bid-${i}`} className="w-4 rounded-t bg-green-500/30 border border-green-500/20 transition-all hover:bg-green-500/50"
+                    style={{ height: `${Math.min(95, Math.max(20, (m.market_health?.liquidity || 50000) / 2000))}%` }} />
+                ))}
+                <div className="w-px h-full bg-cyan-500 mx-1 shadow-[0_0_4px_rgba(0,229,255,0.5)]" />
+                {markets.slice(0, 6).map((m, i) => (
+                  <div key={`ask-${i}`} className="w-4 rounded-t bg-red-500/30 border border-red-500/20 transition-all hover:bg-red-500/50"
+                    style={{ height: `${Math.min(95, Math.max(20, (m.market_health?.spread || 0.02) * 3000))}%` }} />
+                ))}
+              </div>
+              <div className="flex justify-between mt-2 text-[10px] font-mono text-muted">
+                <span className="text-green-400">Bids</span>
+                <span className="text-cyan-400 font-bold">
+                  {selected?.current_price ? `${(selected.current_price * 100).toFixed(1)}¢` : '—'}
+                </span>
+                <span className="text-red-400">Asks</span>
+              </div>
             </div>
-          </div>
-        </section>
-      </main>
+          </section>
+
+          {/* Right Column: Risk Panel + Exits */}
+          <section className="flex flex-col gap-5">
+            <RiskPanel riskState={riskState} />
+
+            <div className="glass-panel rounded-card p-5 flex-1 max-h-[300px] overflow-y-auto">
+              <h3 className="text-[10px] font-bold tracking-widest uppercase text-muted mb-3">Recent Exits</h3>
+              <div className="space-y-3">
+                {recentExits.length > 0 ? recentExits.map((exit, i) => (
+                  <div key={i} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+                    <span className="text-xs text-white truncate max-w-[180px]">{exit.market_name || exit.id}</span>
+                    <span className={`font-mono text-xs font-bold ${exit.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {exit.pnl >= 0 ? '+' : ''}{(exit.pnl * 100).toFixed(1)}¢
+                    </span>
+                  </div>
+                )) : (
+                  <span className="text-xs text-muted italic">No closed positions yet...</span>
+                )}
+              </div>
+            </div>
+          </section>
+        </main>
+      )}
     </div>
   );
 }
