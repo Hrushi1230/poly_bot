@@ -15,6 +15,9 @@ import { logPrediction, compareExpectedVsActual, suggestWeightAdjustments } from
 import { getPaperReport, recordPaperTrade } from '../paper-trader.js';
 import { CONFIG } from '../config.js';
 
+const PORT = process.env.PORT || 10000;
+const risk = new RiskManager();
+
 const app = express();
 
 // ─── CORS: Allow React frontend to connect ───
