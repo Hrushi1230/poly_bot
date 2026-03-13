@@ -28,6 +28,11 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
+// ─── API: Healthcheck (Required for Render) ───
+app.get('/', (req, res) => {
+  res.send('PolyAlpha v6 API Server is Live.');
+});
+
 // ─── API: Test Connections ───
 app.get('/api/test', async (req, res) => {
   const [poly, gdelt] = await Promise.all([testPoly(), testGdelt()]);
@@ -225,7 +230,7 @@ cron.schedule('* * * * *', async () => {
 });
 
 // ─── Start Server ───
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║   PolyAlpha v6 FORTRESS — API Server (No UI)      ║
